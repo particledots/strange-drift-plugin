@@ -28,7 +28,7 @@ namespace
     {
         g.setColour (c);
         g.setFont (font (size));
-        g.drawText (s, juce::Rectangle<float> (cx - 60.0f, baseline - size, 120.0f, size + 4.0f), juce::Justification::centredBottom);
+        g.drawText (s, juce::Rectangle<float> (cx - 110.0f, baseline - size, 220.0f, size + 4.0f), juce::Justification::centredBottom, false);
     }
 
     // A round light with a soft halo; level 0 to 1 decides how brightly it shines.
