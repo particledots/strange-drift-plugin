@@ -22,6 +22,8 @@ namespace strangedrift
         const int v = toFourteenBit (value);
         if (v == l.last || l.sinceSend < kMinIntervalSeconds - 1.0e-9)
             return;
+        if (l.last >= 0 && (v > l.last ? v - l.last : l.last - v) < kMinStep && l.sinceSend < kQuietSeconds - 1.0e-9)
+            return;
 
         const int msb = v >> 7, lsb = v & 127;
         if (msb != l.lastMsb)

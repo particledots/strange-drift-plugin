@@ -134,7 +134,45 @@ LightsLayer::LightsLayer (DriftProcessor& p) : proc (p)
 void LightsLayer::timerCallback()
 {
     if (orbits) proc.copyTraces (traces, traceCounts);
-    repaint();
+
+    // Only what has visibly moved is drawn again: a light whose level moved by more than 1/150 of its range (less
+    // than half a pixel of its bar), a card whose trace moved on, the read-outs when Speed or Hold changed.
+    const float speed = proc.speedNow.load();
+    const bool held = proc.held.load();
+    const bool all = firstFrame || speed != drawnSpeed || held != drawnHeld || orbits != drawnOrbits;
+    std::array<int, strangedrift::kNumOutputs> level {};
+    for (int i = 0; i < strangedrift::kNumOutputs; ++i)
+        level[(size_t) i] = juce::roundToInt (proc.outputs[(size_t) i].load() * 150.0f);
+
+    auto draw = [this] (juce::Rectangle<int> r) { repaint (r); areaDrawn += (double) r.getWidth() * r.getHeight(); };
+    for (int c = 0; c < strangedrift::kNumCircuits; ++c)
+    {
+        const bool xMoved = level[(size_t) (c * 2)] != drawnLevel[(size_t) (c * 2)];
+        const bool yMoved = level[(size_t) (c * 2 + 1)] != drawnLevel[(size_t) (c * 2 + 1)];
+        const float traceEnd = traceCounts[(size_t) c] > 0
+            ? traces[(size_t) c][(size_t) ((traceCounts[(size_t) c] - 1) * 2)] + 3.0f * traces[(size_t) c][(size_t) ((traceCounts[(size_t) c] - 1) * 2 + 1)] : 0.0f;
+        if (all)
+            draw (cardArea (c));
+        else if (orbits)
+        {
+            if (xMoved || yMoved || traceEnd != drawnTraceEnd[(size_t) c]) draw (cardArea (c));
+        }
+        else
+        {
+            if (xMoved) draw (columnArea (c, 0, 1));
+            if (yMoved) draw (columnArea (c, 1, 2));
+        }
+        drawnTraceEnd[(size_t) c] = traceEnd;
+    }
+    if (all || level[strangedrift::kOutBlend] != drawnLevel[strangedrift::kOutBlend]) draw (blendArea());
+    if (all) draw (speedArea());
+
+    drawnLevel = level;
+    drawnSpeed = speed;
+    drawnHeld = held;
+    drawnOrbits = orbits;
+    firstFrame = false;
+    ++framesDrawn;
 }
 
 void LightsLayer::paintLights (juce::Graphics& g, int card)

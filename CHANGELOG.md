@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (lighter on the CPU; waiting for Bryn's test in Logic)
+
+- Fewer MIDI messages, same smoothness: an output is sent once it has moved at least 0.2% (32 of 16,384 steps; still at
+  most every 6 ms), or after 100 ms for smaller moves. About 300 messages a second at 1x instead of about 950. In the 0.1.0
+  test on the Intel Mac the Scripter mapper's work showed clearly on Logic's CPU meter (5% with the mapper bypassed,
+  up to about 30-50% with it on).
+- The window draws again only the parts that moved, instead of the whole panel 30 times a second; nothing at all while held.
+- Nothing else changes: every parameter id, CC number, the mapper (still 0.1.0) and the saved position format are as in 0.1.0.
+
 ## 0.1.0 (milestone 1; built and checked, waiting for Bryn's test in Logic)
 
 - First build: AU + VST3 MIDI effect, universal (Apple Silicon + Intel), macOS 11 or newer, ad-hoc signed.

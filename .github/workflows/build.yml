@@ -169,7 +169,7 @@ jobs:
           cp auval.log StrangeDrift-macOS/auval.log 2>/dev/null || true
           cp pluginval-AU.log pluginval-VST3.log StrangeDrift-macOS/ 2>/dev/null || true
           cat > StrangeDrift-macOS/INSTALL.txt <<'TXT'
-          STRANGE DRIFT 0.1.0: install and set up
+          STRANGE DRIFT 0.1.1: install and set up
 
           INSTALL (once per Mac)
           1. Unzip.

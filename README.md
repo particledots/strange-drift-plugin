@@ -5,7 +5,9 @@ around two "wings" and switching between them at unpredictable moments, sent out
 modulation. Inspired by the feel of the Nonlinearcircuits Triple Sloths (v2) Eurorack module. All code is our own; it is
 not a port or copy of anything, and it is not affiliated with Nonlinearcircuits.
 
-Status: **version 0.1.0 (milestone 1), built and checked; waiting for Bryn's test in Logic on both Macs.**
+Status: **version 0.1.1 (milestone 1), built and checked.** 0.1.0 passed steps 1-6 of Bryn's test on the Intel Mac on
+2026-11-19 (install, lights at 512x, resizing, the mapper, sharing a track with Ogdoad, save and reopen); its CPU use
+there led to 0.1.1. Waiting for the M4 test and the Intel CPU re-check.
 
 - **Three circuits.** At Speed 1x one trip around both wings takes about **20 s** (ripple), **75 s** (tide) and
   **35 min** (glacier), as on the module. The timing is never regular: some trips are short, some linger.
@@ -56,9 +58,10 @@ in the download has the steps.
 
 **With Ogdoad on the same track:** MIDI FX slots in the order Ogdoad, Strange Drift, Ogdoad Mapper, Strange Drift Mapper.
 
-Smoothness and CPU: each output is sent only when its value changes, at most once every 6 ms, coarse part only when it
-changes, placed at its exact sample. At 1x glacier never moves more than 1 step of 16,384 per message. Strange Drift
-sends about 950 MIDI messages a second at 1x and about 2,200 at 512x. The engine uses under 0.1% of one core.
+Smoothness and CPU: each output is sent once it has moved at least 0.2% (32 of 16,384 steps), at most every 6 ms,
+or after 100 ms for smaller moves; coarse part only when it changes, placed at its exact sample. Every message costs the
+Scripter mapper work in Logic, so slow drifts send few. Strange Drift sends about 300 MIDI messages a second at 1x
+(0.1.0 sent about 950). The engine uses under 0.1% of one core.
 
 ## The circuits
 
@@ -101,7 +104,7 @@ only its public description of the module was used.
   up and moved, the two Nudge knobs the same way and opposite ways) keeping moving, staying in range and visiting both
   wings; Lean leaning the right way; exactly the same chaos at every sample rate and the same MIDI at every block size;
   save and reload continuing exactly, broken saved states refused; New start; Hold; the mod wheel; the CC rules (6 ms
-  cap, coarse before fine, small steps); CPU.
+  cap, 0.2% or 100 ms, coarse before fine, small steps); CPU.
 - **Mapper test**: the real mapper script run in a stand-in for Scripter, fed by the engine's real MIDI stream:
   every kind of source (X, Y, Z, Blend +, −, +/−), Min/Max, upside-down lanes, 14-bit detail, notes passing, Strange
   Drift's CC stopped, Ogdoad's CC passing, the channel setting, and the Strange Drift Mapper chained with a copy of the

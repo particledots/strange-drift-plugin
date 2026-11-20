@@ -5,7 +5,11 @@
 //
 // Rules, per lane:
 //   - send only when the 14-bit value has changed;
-//   - at most once every kMinIntervalSeconds (6 ms, about one Logic audio block), so Scripter is never flooded;
+//   - at most once every kMinIntervalSeconds (6 ms), as in Ogdoad;
+//   - and only once it has moved at least kMinStep (32 of 16,384, 0.2%), or kQuietSeconds (100 ms) have passed:
+//     so fast moves stay as smooth as in 0.1.0 while slow drifts send far fewer messages. Every message costs the
+//     Scripter mapper (and the knob it moves) work in Logic; on the Intel Mac 0.1.0's ~900 messages a second showed
+//     clearly on Logic's CPU meter (test of 2026-11-19). 0.1.1 sends about a third as many;
 //   - the coarse part is sent only when it changed, and always immediately before the fine part, at the same sample;
 //     the fine part is always sent, so a receiver acts when the fine part arrives.
 
@@ -25,6 +29,8 @@ namespace strangedrift
 
     inline constexpr int kMaxCcLanes = 16;
     inline constexpr double kMinIntervalSeconds = 0.006;
+    inline constexpr double kQuietSeconds = 0.100;
+    inline constexpr int kMinStep = 32;
 
     // -1..+1 to 0..16383
     inline int toFourteenBit (double v)

@@ -66,6 +66,20 @@ private:
     bool orbits = false;
     std::array<std::array<float, strangedrift::Engine::kTracePoints * 2>, strangedrift::kNumCircuits> traces {};
     std::array<int, strangedrift::kNumCircuits> traceCounts {};
+
+    // What was last drawn, so only the parts that moved are drawn again (0.1.1: lighter on the Intel Mac).
+    std::array<int, strangedrift::kNumOutputs> drawnLevel {};
+    std::array<float, strangedrift::kNumCircuits> drawnTraceEnd {};
+    float drawnSpeed = -1.0f;
+    bool drawnHeld = false, drawnOrbits = false, firstFrame = true;
+public:
+    static juce::Rectangle<int> cardArea (int card) { return { DriftStyle::kCardX[card] + 4, 76, DriftStyle::kCardW - 8, 232 }; }
+    static juce::Rectangle<int> blendArea()         { return { 24, 320, 122, 80 }; }
+    static juce::Rectangle<int> speedArea()         { return { 8, 162, 124, 18 }; }
+    // One column of lights (Lights view): the light, its bar and labels. Y's column also covers Z.
+    static juce::Rectangle<int> columnArea (int card, int col, int cols) { return { DriftStyle::columnX (card, col) - 28, 108, 57 * cols - 1, 196 }; }
+    int framesDrawn = 0;
+    double areaDrawn = 0.0;                  // for the offline checks: total area drawn again, in panel pixels
 };
 
 // The whole panel at its design size (780 x 470). The editor below scales it to the window.
@@ -86,6 +100,7 @@ public:
     juce::TextButton lightsButton { "Lights" }, orbitsButton { "Orbits" };
     juce::TextButton newStartButton { "New start" };
     bool isOrbitsView() const { return lights.isOrbits(); }
+    const LightsLayer& lightsLayer() const { return lights; }
     static inline const juce::Identifier orbitsViewProperty { "orbitsView" };
 
     static constexpr int kWidth = 780, kHeight = 470;      // the design size; everything is laid out at this size

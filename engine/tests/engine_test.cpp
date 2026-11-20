@@ -6,7 +6,7 @@
 //     standstill, both wings visited;
 //   - every Lean / Nudge combination keeps moving (no standstill, no runaway), and Lean leans the right way;
 //   - the same chaos path at every sample rate, the same MIDI at every block size, after save and reload, and New start;
-//   - Hold, the mod wheel, blend, and the CC rules copied from Ogdoad (6 ms cap, coarse before fine, small steps);
+//   - Hold, the mod wheel, blend, and the CC rules copied from Ogdoad (6 ms cap, 0.2% or 100 ms, coarse before fine, small steps);
 //   - the CPU use and the MIDI rate.
 
 #include "strangedrift/Engine.h"
@@ -426,7 +426,10 @@ int main()
         e.setSettings (s);
         run (e, 48000.0, 5.0, 256);
         s.hold = true; e.setSettings (s);
-        run (e, 48000.0, 0.1, 256);
+        run (e, 48000.0, 0.2, 256);
+        bool exact = true;
+        for (int i = 0; i < kNumOutputs; ++i) exact = exact && e.ccStream().lastSent (i) == toFourteenBit (e.output (i));
+        expect (exact, "within 0.2 s of Hold every output has been sent at its exact value (small moves are not left behind)");
         const std::string frozen = e.saveState();
         std::vector<Msg> during;
         run (e, 48000.0, 10.0, 256, &during);
@@ -484,7 +487,7 @@ int main()
                 continue;
             }
             const int i = g.cc - 113;
-            if (lastFine[i] >= 0 && (double) (g.sample - lastTime[i]) < 0.006 * 48000.0 - 1.0) gapOk = false;
+            if (lastFine[i] >= 0 && (double) (g.sample - lastTime[i]) < kMinIntervalSeconds * 48000.0 - 1.0) gapOk = false;
             const int v = coarse[i] * 128 + g.value;
             if (lastValue[i] >= 0) maxJump[i] = std::max (maxJump[i], std::abs (v - lastValue[i]));
             lastValue[i] = v; lastFine[i] = g.value; lastTime[i] = g.sample;
@@ -498,14 +501,15 @@ int main()
         expect (finalOk, tag + "the receiver ends up with exactly the engine's values");
         if (sp == 1.0)
         {
-            expect (maxJump[kOutGlacierX] <= 2 && maxJump[kOutGlacierY] <= 2,
-                    fmt ("glacier moves in steps of at most 2 of 16,384 (largest %.0f and %.0f)", maxJump[kOutGlacierX], maxJump[kOutGlacierY]));
-            expect (maxJump[kOutTideX] <= 40 && maxJump[kOutTideY] <= 40,
-                    fmt ("tide moves in steps of at most 40 of 16,384 (largest %.0f and %.0f)", maxJump[kOutTideX], maxJump[kOutTideY]));
+            expect (maxJump[kOutGlacierX] <= 16 && maxJump[kOutGlacierY] <= 16,
+                    fmt ("glacier moves in steps of at most 16 of 16,384 (largest %.0f and %.0f)", maxJump[kOutGlacierX], maxJump[kOutGlacierY]));
+            expect (maxJump[kOutTideX] <= 64 && maxJump[kOutTideY] <= 64 && maxJump[kOutRippleX] <= 160 && maxJump[kOutRippleY] <= 200,
+                    fmt ("tide moves in steps of at most 64 of 16,384 (largest %.0f and %.0f), ripple as smooth as in 0.1.0 (largest %.0f and %.0f)", maxJump[kOutTideX], maxJump[kOutTideY]));
             std::printf ("smoothness at 1x, largest step per message (of 16,384): ripple %d %d, tide %d %d, glacier %d %d, blend %d\n",
                          maxJump[0], maxJump[1], maxJump[2], maxJump[3], maxJump[4], maxJump[5], maxJump[6]);
         }
         const double rate = (double) msgs.size() / (sp > 1.0 ? 60.0 : 1800.0);
+        if (sp == 1.0) expect (rate < 450.0, tag + fmt ("under 450 MIDI messages a second (%.0f; 0.1.0 sent about 950)", rate));
         if (sp == 1.0) std::printf ("MIDI: %.0f messages a second at 1x", rate);
         else std::printf (", %.0f at 512x\n", rate);
     }

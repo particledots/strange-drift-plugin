@@ -207,6 +207,33 @@ int main (int argc, char** argv)
         runBlocks (proc, 0.1, 512);
         expect (proc.currentChaosState() != beforeNew && snapshot (proc) == paramsBefore, "New start jumps to a fresh place and moves no parameter");
 
+        // The window only draws what moved (0.1.1): while held, nothing is drawn again; while running at 1x, far
+        // fewer than all five parts each frame.
+        auto pump = [&] (double seconds)
+        {
+            for (int k = 0; k < (int) (seconds * 50.0); ++k)
+            {
+                runBlocks (proc, 0.02, 480);
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            }
+        };
+        setParam (proc, "speed", 0.5f);
+        setParam (proc, "hold", 1.0f);
+        pump (0.4);
+        const double heldArea = ed->panel.lightsLayer().areaDrawn;
+        const int heldFrames = ed->panel.lightsLayer().framesDrawn;
+        pump (1.0);
+        expect (ed->panel.lightsLayer().framesDrawn > heldFrames + 10 && ed->panel.lightsLayer().areaDrawn == heldArea,
+                "while held, the window draws nothing again");
+        setParam (proc, "hold", 0.0f);
+        pump (0.3);
+        const double a0 = ed->panel.lightsLayer().areaDrawn;
+        const int f0 = ed->panel.lightsLayer().framesDrawn;
+        pump (4.0);
+        const double share = (ed->panel.lightsLayer().areaDrawn - a0) / juce::jmax (1, ed->panel.lightsLayer().framesDrawn - f0) / (780.0 * 470.0);
+        std::cout << "window at 1x: " << juce::String (100.0 * share, 1) << "% of the panel drawn again per frame (0.1.0: 100%)" << std::endl;
+        expect (share > 0.002 && share < 0.25, "at 1x the window draws only what moved (" + juce::String (100.0 * share, 1) + "% of the panel per frame; 0.1.0 drew all of it)");
+
         bool rising = true;
         for (int k = 1; k <= 100; ++k) rising = rising && DriftStyle::lightAlpha (k / 100.0) >= DriftStyle::lightAlpha ((k - 1) / 100.0);
         expect (std::fabs (DriftStyle::lightAlpha (0.0) - 0.10f) < 1.0e-6f && std::fabs (DriftStyle::lightAlpha (1.0) - 1.0f) < 1.0e-6f
@@ -369,7 +396,7 @@ int main (int argc, char** argv)
 
         // Hold: silent after the last value.
         setParam (p, "hold", 1.0f);
-        runBlocks (p, 0.05, 512);
+        runBlocks (p, 0.2, 512);
         expect (runBlocks (p, 1.0, 512).empty(), "Hold: nothing sent while held");
         setParam (p, "hold", 0.0f);
         expect (! runBlocks (p, 0.2, 512).empty(), "after Hold the CC flows again");

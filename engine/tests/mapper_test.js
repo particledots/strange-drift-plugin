@@ -25,7 +25,7 @@ function readDump(seconds, speed) {
     }
     return d;
 }
-const dump = readDump(30, 64);
+const dump = readDump(120, 64);
 const events = dump.events, finals = dump.finals;
 expect(events.length > 5000, "the engine produced a CC stream (" + events.length + " messages)");
 const isOurCc = n => n >= 106 && n <= 119;
@@ -94,7 +94,7 @@ const near = (a, b) => Math.abs(a - b) < 1e-9;
     expect(s.out.passed.every(e => !(e.channel === 15 && isOurCc(e.number))), "Strange Drift's own CC never reaches the instrument");
     const s2 = makeScripter(scriptText, {}, false);
     for (const e of events) s2.sandbox.HandleMIDI(new s2.sandbox.ControlChange({ channel: 15, number: e.cc, value: e.value }));
-    expect(s2.out.passed.length === 0, "the whole 30 s stream stops at the mapper");
+    expect(s2.out.passed.length === 0, "the whole 120 s stream stops at the mapper");
 }
 
 // ---- 3. All lanes set up, real stream ---------------------------------------------------------------------------------
