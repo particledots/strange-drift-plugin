@@ -1,0 +1,251 @@
+name: Build Strange Drift
+
+# Runs automatically every time code is pushed, and can also be started by hand
+# from the Actions tab ("Run workflow").
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine-test:
+    name: Engine self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the engine test
+        run: |
+          set +e
+          ( cmake -S . -B build-test -DSTRANGEDRIFT_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Release \
+            && cmake --build build-test -j 4 \
+            && ctest --test-dir build-test --output-on-failure -V ) > engine-test.log 2>&1
+          code=$?
+          tail -n 40 engine-test.log
+          # Result is also written as annotations (shown on the run page and readable through the API).
+          if [ $code -ne 0 ]; then
+            echo "::error::ENGINE-TEST: failed (exit code $code)"
+            grep -E "error|FAIL|engine tests:|mapper tests:" engine-test.log | head -15 | while IFS= read -r line; do echo "::error::ENGINE-TEST: $line"; done
+            exit 1
+          fi
+          echo "::notice::ENGINE-TEST: $(grep -h 'engine tests:' engine-test.log | head -n 1)"
+          echo "::notice::CPU: $(grep -ho 'CPU: .*' engine-test.log | head -n 1)"
+          echo "::notice::MIDI: $(grep -ho 'MIDI: .*' engine-test.log | head -n 1)"
+          echo "::notice::TRIPS: $(grep -h 'trip at 1x' engine-test.log | tr '\n' ' ')"
+          echo "::notice::MAPPER-TEST: $(grep -h 'mapper tests:' engine-test.log | head -n 1)"
+          grep -q "mapper tests: .* checks passed" engine-test.log || { echo "::error::MAPPER-TEST: no pass line found"; exit 1; }
+
+  build-macos:
+    name: Build AU + VST3 (macOS)
+    runs-on: macos-26     # Apple silicon runner; macos-14 is retired by GitHub on 2 Nov 2026
+    permissions:
+      contents: write     # only to put the finished package into a private draft release (last step)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          set +e
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTRANGEDRIFT_BUILD_PREVIEW=ON > configure.log 2>&1; code=$?
+          tail -n 20 configure.log
+          if [ $code -ne 0 ]; then
+            echo "::error::CONFIGURE: failed (exit code $code)"
+            grep -iE "error" configure.log | head -10 | while IFS= read -r line; do echo "::error::CONFIGURE: $line"; done
+            exit 1
+          fi
+
+      - name: Build AU and VST3
+        run: |
+          set +e
+          cmake --build build --config Release --target StrangeDrift_AU StrangeDrift_VST3 -j 4 > build.log 2>&1; code=$?
+          tail -n 30 build.log
+          if [ $code -ne 0 ]; then
+            echo "::error::BUILD: failed (exit code $code)"
+            grep -E "error:|Error " build.log | head -15 | while IFS= read -r line; do echo "::error::BUILD: $line"; done
+            exit 1
+          fi
+          echo "::notice::BUILD: AU and VST3 compiled"
+
+      - name: Locate the built plugins
+        id: find
+        run: |
+          AU=$(find build -type d -name "StrangeDrift.component" | head -n 1)
+          VST3=$(find build -type d -name "StrangeDrift.vst3" | head -n 1)
+          echo "AU:   $AU"
+          echo "VST3: $VST3"
+          test -n "$AU"   || { echo "AU bundle not found";   exit 1; }
+          test -n "$VST3" || { echo "VST3 bundle not found"; exit 1; }
+          echo "au=$AU"     >> "$GITHUB_OUTPUT"
+          echo "vst3=$VST3" >> "$GITHUB_OUTPUT"
+
+      - name: Check the build is universal (Apple Silicon + Intel)
+        run: |
+          lipo -archs "${{ steps.find.outputs.au }}/Contents/MacOS/StrangeDrift"
+          lipo -archs "${{ steps.find.outputs.vst3 }}/Contents/MacOS/StrangeDrift"
+
+      - name: Sign (ad-hoc, so Apple Silicon Macs will load it)
+        run: |
+          codesign --force --deep --sign - "${{ steps.find.outputs.au }}"
+          codesign --force --deep --sign - "${{ steps.find.outputs.vst3 }}"
+          codesign --verify --deep --strict --verbose=2 "${{ steps.find.outputs.au }}"
+          codesign --verify --deep --strict --verbose=2 "${{ steps.find.outputs.vst3 }}"
+
+      - name: Apple's AU validator (auval)
+        continue-on-error: true
+        run: |
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          cp -R "${{ steps.find.outputs.au }}" "$HOME/Library/Audio/Plug-Ins/Components/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aumi Sdr1 Pdot > auval.log 2>&1; code=$?
+          tail -n 20 auval.log
+          # Result is also written as annotations (shown on the run page and readable through the API).
+          if grep -q "AU VALIDATION SUCCEEDED" auval.log; then
+            echo "::notice::AUVAL: AU VALIDATION SUCCEEDED"
+          else
+            echo "::error::AUVAL: did not succeed (auval exit code $code)"
+            grep -iE "fail|error|cannot|not found" auval.log | head -8 | while IFS= read -r line; do echo "::error::AUVAL: $line"; done
+            exit 1
+          fi
+
+      # pluginval (Tracktion's open-source plugin validator) checks the AU and the VST3 the way hosts use them: loading,
+      # parameters, saving and restoring state, different buffer sizes and sample rates. It never fails the build;
+      # its verdict is written as annotations and as logs inside the package.
+      - name: pluginval (AU and VST3)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          set +e
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q -o pluginval.zip -d pluginval-bin
+          PV="$(find pluginval-bin -type f -name pluginval -perm -u+x | head -n 1)"
+          echo "pluginval binary: $PV"
+          test -n "$PV" || { echo "::warning::PLUGINVAL: could not download pluginval"; exit 0; }
+          "$PV" --version 2>&1 | head -n 1 | while IFS= read -r line; do echo "::notice::PLUGINVAL version: $line"; done
+          for kind in AU VST3; do
+            if [ "$kind" = "AU" ]; then TARGET="$HOME/Library/Audio/Plug-Ins/Components/StrangeDrift.component"; else TARGET="${{ steps.find.outputs.vst3 }}"; fi
+            "$PV" --strictness-level 5 "$TARGET" > "pluginval-$kind.log" 2>&1; code=$?
+            tail -n 25 "pluginval-$kind.log"
+            if [ $code -eq 0 ]; then
+              echo "::notice::PLUGINVAL $kind: passed at strictness level 5"
+            else
+              echo "::error::PLUGINVAL $kind: failed (exit code $code)"
+              grep -iE "fail|error|crash|assert" "pluginval-$kind.log" | head -12 | while IFS= read -r line; do echo "::error::PLUGINVAL $kind: $line"; done
+            fi
+          done
+          exit 0
+
+      # Draws the real window to picture files and runs the plugin checks (controls, saving, MIDI in and out).
+      # Never fails the build; the result is written as annotations and the pictures are uploaded separately.
+      - name: Window picture and plugin checks
+        continue-on-error: true
+        run: |
+          set +e
+          cmake --build build --config Release --target StrangeDriftPreview -j 4 > preview-build.log 2>&1 || { tail -n 30 preview-build.log; echo "::warning::PREVIEW: did not build"; exit 0; }
+          PV="$(find build -type f -name StrangeDriftPreview -perm -u+x | head -n 1)"
+          "$PV" window-pictures > preview.log 2>&1; code=$?
+          cat preview.log
+          if [ $code -eq 0 ]; then echo "::notice::PREVIEW: $(grep -h 'preview checks:' preview.log)"; else
+            echo "::error::PREVIEW: $(grep -h 'preview checks:' preview.log)"
+            grep FAIL preview.log | head -10 | while IFS= read -r line; do echo "::error::PREVIEW: $line"; done
+          fi
+          ls -l window-pictures
+
+      - name: Upload the window pictures
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: StrangeDrift-window-pictures
+          path: window-pictures/*.png
+          if-no-files-found: warn
+
+      - name: Package
+        run: |
+          mkdir -p StrangeDrift-macOS
+          cp -R "${{ steps.find.outputs.au }}"   StrangeDrift-macOS/
+          cp -R "${{ steps.find.outputs.vst3 }}" StrangeDrift-macOS/
+          cp auval.log StrangeDrift-macOS/auval.log 2>/dev/null || true
+          cp pluginval-AU.log pluginval-VST3.log StrangeDrift-macOS/ 2>/dev/null || true
+          cat > StrangeDrift-macOS/INSTALL.txt <<'TXT'
+          STRANGE DRIFT 0.1.0: install and set up
+
+          INSTALL (once per Mac)
+          1. Unzip.
+          2. Open Terminal and run:   xattr -dr com.apple.quarantine ~/Downloads/StrangeDrift-macOS/*
+             (adjust the path if you unzipped elsewhere; this clears the "downloaded from internet" block)
+          3. Double-click Install-Unofficial-Plugin.command in this folder. It asks for your Mac password once and
+             installs the Audio Unit (StrangeDrift.component) for all users. It does not install the VST3.
+          4. Open Logic. If Strange Drift is missing: Settings > Plug-in Manager, select Strange Drift,
+             Reset & Rescan Selection.
+
+          THE MAPPER (once per Mac)
+          Logic has no CV, so Strange Drift sends its outputs as MIDI CC, and a Scripter script turns them into
+          knob moves.
+          5. Make a Software Instrument track. MIDI FX slot 1: Audio Units > particledots > Strange Drift.
+             MIDI FX slot 2: Scripter.
+          6. In Scripter, click "Open Script in Editor". Select everything in the editor and delete it.
+          7. Open "Strange Drift Mapper (paste into Scripter).txt" from this folder, select all, copy, paste it into
+             the Script Editor, click "Run Script", and close the editor.
+          8. In Scripter's preset menu (top of its window) choose "Save As..." and call it Strange Drift Mapper.
+             From now on "Strange Drift Mapper" is in Scripter's preset menu on this Mac.
+
+          EACH TRACK
+          9.  MIDI FX slot: Strange Drift. The slot below it: Scripter with the Strange Drift Mapper preset.
+          10. In Scripter: set "Lane 1 source" to an output (Ripple, Tide or Glacier X, Y or Z, or Blend +, -, +/-).
+              Open "Lane 1 target", choose "Learn plug-in parameter", then move once the knob you want to
+              modulate (on the instrument, or on an audio effect on this track).
+          11. "Lane 1 min %" and "Lane 1 max %" set how far that knob sweeps (max below min turns it upside down).
+              Blend + rests at min and rises to max while the blend is above zero; Blend - the same below zero.
+          Up to 8 lanes per Scripter; for more, add a second Scripter with the same preset below the first.
+          Strange Drift's CC (channel 15: CC 106-119) stops at the mapper; your notes and everything else pass
+          through.
+
+          SHARING A TRACK WITH OGDOAD
+          Ogdoad uses channel 16, Strange Drift channel 15, and each mapper only takes its own plugin's CC.
+          Order the MIDI FX slots: Ogdoad, Strange Drift, Ogdoad Mapper, Strange Drift Mapper.
+
+          GOOD TO KNOW
+          - Speed: 1x (the centre; double-click the knob) runs as the module: ripple about 20 s, tide about 75 s,
+            glacier about 35 min per trip. Turn it up to 512x to see every output move within seconds.
+          - Where the chaos is gets saved with the project. A new copy starts somewhere random; New start jumps to a
+            fresh place (use it on a duplicated track so the two copies do not move in step).
+          - Lean: how long a circuit lingers on one side. Nudge: pushes it with another circuit or the mod wheel.
+          TXT
+          # Easy installer for Logic (double-click; same file in every plugin)
+          cp "tools/mapper/StrangeDrift-Mapper.js" "StrangeDrift-macOS/Strange Drift Mapper (paste into Scripter).txt"
+          cp tools/install/Install-Unofficial-Plugin.command StrangeDrift-macOS/
+          chmod +x StrangeDrift-macOS/Install-Unofficial-Plugin.command
+          [ -x StrangeDrift-macOS/Install-Unofficial-Plugin.command ] || { echo "::error::PACKAGE missing Install-Unofficial-Plugin.command"; exit 1; }
+          [ -f "StrangeDrift-macOS/Strange Drift Mapper (paste into Scripter).txt" ] || { echo "::error::PACKAGE missing the mapper"; exit 1; }
+          ditto -c -k --keepParent StrangeDrift-macOS StrangeDrift-macOS.zip
+          ls -l StrangeDrift-macOS StrangeDrift-macOS.zip
+          # Package contents are also written as annotations (readable through the API).
+          echo "::notice::PACKAGE archs: $(lipo -archs StrangeDrift-macOS/StrangeDrift.component/Contents/MacOS/StrangeDrift)"
+          unzip -Z StrangeDrift-macOS.zip | grep -E "Install-Unofficial|INSTALL.txt|auval.log|Mapper|Contents/MacOS/StrangeDrift$" | while IFS= read -r line; do echo "::notice::ZIP: $line"; done
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: StrangeDrift-macOS
+          path: StrangeDrift-macOS.zip
+          if-no-files-found: error
+
+      # A second way to get the package, besides the Actions page: a private DRAFT release (only people with
+      # access to the repo can see it) holding the same zip. Older drafts of this kind are removed first.
+      # A failure here never fails the build.
+      - name: Private draft release with the package
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft and (.name | startswith("Strange Drift test build"))) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done
+          ls window-pictures/*.png >/dev/null 2>&1 && ditto -c -k window-pictures StrangeDrift-window-pictures.zip
+          gh release create "test-build-${GITHUB_RUN_NUMBER}" StrangeDrift-macOS.zip $(ls StrangeDrift-window-pictures.zip 2>/dev/null) --draft --target "$GITHUB_SHA" \
+            --title "Strange Drift test build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
+            --notes "Same package as the StrangeDrift-macOS artifact of this run. Draft: not public."
+          echo "::notice::DRAFT-RELEASE: created test-build-${GITHUB_RUN_NUMBER}"
