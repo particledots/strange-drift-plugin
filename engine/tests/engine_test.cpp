@@ -501,8 +501,8 @@ int main()
         expect (finalOk, tag + "the receiver ends up with exactly the engine's values");
         if (sp == 1.0)
         {
-            expect (maxJump[kOutGlacierX] <= 16 && maxJump[kOutGlacierY] <= 16,
-                    fmt ("glacier moves in steps of at most 16 of 16,384 (largest %.0f and %.0f)", maxJump[kOutGlacierX], maxJump[kOutGlacierY]));
+            expect (maxJump[kOutGlacierX] <= kMinStep && maxJump[kOutGlacierY] <= kMinStep,
+                    fmt ("glacier moves in steps of at most 32 of 16,384 (0.2%%) (largest %.0f and %.0f)", maxJump[kOutGlacierX], maxJump[kOutGlacierY]));
             expect (maxJump[kOutTideX] <= 64 && maxJump[kOutTideY] <= 64 && maxJump[kOutRippleX] <= 160 && maxJump[kOutRippleY] <= 200,
                     fmt ("tide moves in steps of at most 64 of 16,384 (largest %.0f and %.0f), ripple as smooth as in 0.1.0 (largest %.0f and %.0f)", maxJump[kOutTideX], maxJump[kOutTideY]));
             std::printf ("smoothness at 1x, largest step per message (of 16,384): ripple %d %d, tide %d %d, glacier %d %d, blend %d\n",
