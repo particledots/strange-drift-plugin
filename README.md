@@ -5,9 +5,17 @@ around two "wings" and switching between them at unpredictable moments, sent out
 modulation. Inspired by the feel of the Nonlinearcircuits Triple Sloths (v2) Eurorack module. All code is our own; it is
 not a port or copy of anything, and it is not affiliated with Nonlinearcircuits.
 
-Status: **version 0.1.1 (milestone 1), built and checked.** 0.1.0 passed steps 1-6 of Bryn's test on the Intel Mac on
-2026-11-19 (install, lights at 512x, resizing, the mapper, sharing a track with Ogdoad, save and reopen); its CPU use
-there led to 0.1.1. Waiting for the M4 test and the Intel CPU re-check.
+Status: **version 0.1.1, milestone 1 finished: tested by Bryn in Logic on both Macs on 2026-11-19.**
+
+- **M4 Mac mini** (macOS Tahoe, Logic Pro 11.2.2): every step passed on 0.1.1: install, lights at 512x, resizing,
+  the mapper moving a synth's cutoff, sharing a track with Ogdoad, save and reopen, CPU (Logic's meter barely registers).
+- **Intel Mac** (macOS 12.7.8, Logic Pro 10.7.8): install, lights, resizing, the mapper, sharing a track with Ogdoad,
+  and save and reopen passed on 0.1.0. CPU and smoothness were re-checked on 0.1.1: Logic's meter about 5-25% with the
+  window closed and 10-30% with it open (0.1.0: up to about 50%), no stepping heard. On this Mac the Scripter mapper's
+  work is what shows on the meter (5% with the mapper bypassed); Strange Drift's own engine uses under 0.1% of a core.
+- **Feel:** "very similar" to Bryn's Triple Sloths. From memory (module not connected), ripple and tide may move faster
+  than on the module; glacier feels right. Not changed: to be compared with the module itself. Speed (all three) can
+  be turned down meanwhile.
 
 - **Three circuits.** At Speed 1x one trip around both wings takes about **20 s** (ripple), **75 s** (tide) and
   **35 min** (glacier), as on the module. The timing is never regular: some trips are short, some linger.

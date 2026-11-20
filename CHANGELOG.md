@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.1 (lighter on the CPU; waiting for Bryn's test in Logic)
+## 0.1.1 (milestone 1 finished: tested in Logic on the M4 Mac mini and the Intel Mac, 2026-11-19)
+
+- Tested by Bryn: the M4 Mac mini passed every step on 0.1.1; the Intel Mac passed the install, lights, resizing,
+  mapper, Ogdoad and save/reopen steps on 0.1.0 and the CPU and smoothness re-check on 0.1.1 (meter about 5-25% window
+  closed, 10-30% open; no stepping heard).
 
 - Fewer MIDI messages, same smoothness: an output is sent once it has moved at least 0.2% (32 of 16,384 steps; still at
   most every 6 ms), or after 100 ms for smaller moves. About 300 messages a second at 1x instead of about 950. In the 0.1.0
@@ -9,7 +13,7 @@
 - The window draws again only the parts that moved, instead of the whole panel 30 times a second; nothing at all while held.
 - Nothing else changes: every parameter id, CC number, the mapper (still 0.1.0) and the saved position format are as in 0.1.0.
 
-## 0.1.0 (milestone 1; built and checked, waiting for Bryn's test in Logic)
+## 0.1.0 (first build; Intel Mac test showed the CPU use fixed in 0.1.1)
 
 - First build: AU + VST3 MIDI effect, universal (Apple Silicon + Intel), macOS 11 or newer, ad-hoc signed.
 - Three slow chaos circuits (ripple about 20 s, tide about 75 s, glacier about 35 min per trip at 1x), each with X, Y
